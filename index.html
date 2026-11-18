@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moment · 云端朋友圈</title>
+    <meta name="description" content="Moment · 云端朋友圈：纯前端页面 + Firebase 实时数据。" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Moment · 云端朋友圈" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2310b981'/%3E%3Ccircle cx='12' cy='13' r='3' fill='%230f172a'/%3E%3Ccircle cx='21' cy='13' r='3' fill='%230f172a' opacity='.65'/%3E%3Crect x='8' y='20' width='16' height='3' rx='1.5' fill='%230f172a' opacity='.8'/%3E%3C/svg%3E" />
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Firebase SDKs (Modular via CDN) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, deleteDoc, getDocs, query, where, orderBy, limit, arrayUnion, arrayRemove, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
+
+        // Expose to global for app usage
+        window.firebaseModules = {
+            initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signOut,
+            getFirestore, collection, doc, setDoc, getDoc, updateDoc, deleteDoc, getDocs, query, where, orderBy, limit, arrayUnion, arrayRemove, onSnapshot,
+            getStorage, ref, uploadBytes, getDownloadURL, deleteObject, getAnalytics
+        };
+        window.dispatchEvent(new Event('firebase-loaded'));
+    </script>
+    <style>
+        /* 已移除 Google Fonts @import：改用系统字体，国内无需访问 googleapis */
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+
+    <!-- Top Connection Status Banner -->
+    <div id="status-banner" class="bg-emerald-600/90 text-white text-xs py-1.5 px-4 text-center font-medium flex items-center justify-center gap-2 shadow-inner transition-all duration-300">
+        <i class="fa-solid fa-cloud-circle-check animate-pulse"></i>
+        <span>云端实时同步已开启 (Firebase 专属连接)</span>
+        <button onclick="openConfigModal()" class="underline hover:text-emerald-200 ml-4 cursor-pointer">查看/更换配置</button>
+    </div>
+
+    <!-- Main Container (Desktop 3-Column Layout) -->
+    <div id="app-container" class="flex-1 max-w-[1400px] w-full mx-auto flex flex-col lg:flex-row shadow-2xl bg-[#090d16] border-x border-slate-800/80 min-h-[calc(100vh-32px)]">
+
+        <!-- ==================== VIEW 1: AUTHENTICATION / LOGIN ==================== -->
+        <div id="view-auth" class="flex-1 flex items-center justify-center p-6 lg:p-12">
+            <div class="max-w-md w-full bg-slate-900/90 border border-slate-800 rounded-2xl shadow-2xl p-8 backdrop-blur-xl relative overflow-hidden">
+                <div class="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                
+                <div class="text-center mb-8">
+                    <div class="w-16 h-16 bg-gradient-to-tr from-emerald-600 to-teal-500 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-emerald-900/30 mb-4 text-2xl text-white">
+                        <i class="fa-solid fa-circle-nodes"></i>
+                    </div>
+                    <h1 class="text-2xl font-bold tracking-tight text-white">Moment · 云端朋友圈</h1>
+                    <p class="text-slate-400 text-sm mt-2">真实手机号注册与云端多端同步社交空间</p>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">手机号码 (+86)</label>
+                        <div class="flex gap-2">
+                            <select id="login-prefix" class="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <option>+86 中国</option>
+                            </select>
+                            <input type="tel" id="login-phone" maxlength="11" placeholder="请输入11位手机号" class="flex-1 bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">短信验证码</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="login-code" maxlength="6" placeholder="6位验证码" class="flex-1 bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition">
+                            <button onclick="handleSendSms()" id="btn-send-code" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-400 font-medium px-4 py-2.5 rounded-xl text-xs transition cursor-pointer whitespace-nowrap">
+                                发送验证码
+                            </button>
+                        </div>
+                        <p id="sms-tip" class="text-xs text-emerald-400/90 mt-1.5 hidden font-mono bg-emerald-950/40 p-2 rounded-lg border border-emerald-900/50"></p>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">显示昵称 (新账号注册时生效)</label>
+                        <input type="text" id="login-nickname" maxlength="20" placeholder="例如：林深时见鹿" class="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition">
+                    </div>
+
+                    <button onclick="handleLogin()" class="w-full mt-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium py-3 rounded-xl shadow-lg shadow-emerald-900/40 transition duration-200 cursor-pointer">
+                        验证并进入云端朋友圈
+                    </button>
+                </div>
+
+                <div class="mt-8 pt-6 border-t border-slate-800 text-xs text-slate-500 space-y-2">
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-500"></i> 零预置测试账号 - 所有用户均由真实注册产生</div>
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-500"></i> 支持搜索手机号互相添加好友与审批</div>
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-500"></i> 支持「仅看最近一个月」及黑名单实时生效</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== VIEW 2: MAIN APP (3-COLUMN DESKTOP) ==================== -->
+        <div id="view-main" class="flex-1 hidden flex-col lg:flex-row w-full">
+
+            <!-- LEFT SIDEBAR: Navigation & User Profile (Fixed 260px) -->
+            <aside class="w-full lg:w-[260px] bg-slate-900/95 border-r border-slate-800 flex flex-col justify-between p-5 shrink-0">
+                <div>
+                    <!-- Logo / Brand -->
+                    <div class="flex items-center gap-3 mb-6 px-1">
+                        <div class="w-10 h-10 bg-gradient-to-tr from-emerald-600 to-teal-500 rounded-xl flex items-center justify-center text-white shadow-md">
+                            <i class="fa-solid fa-circle-nodes"></i>
+                        </div>
+                        <div>
+                            <h2 class="font-bold text-base text-white tracking-tight">Moment 空间</h2>
+                            <p class="text-xs text-emerald-400">云端实时在线</p>
+                        </div>
+                    </div>
+
+                    <!-- Current User Card -->
+                    <div class="bg-slate-800/50 border border-slate-700/60 rounded-2xl p-3.5 mb-6 flex items-center gap-3">
+                        <div id="my-sidebar-avatar" class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-white font-bold text-lg shadow">U</div>
+                        <div class="overflow-hidden flex-1">
+                            <h4 id="my-sidebar-name" class="font-semibold text-sm text-slate-100 truncate">加载中...</h4>
+                            <p id="my-sidebar-phone" class="text-xs text-slate-400 truncate mt-0.5">--</p>
+                        </div>
+                    </div>
+
+                    <!-- Navigation Links -->
+                    <nav class="space-y-1.5">
+                        <button onclick="switchTab('feed')" id="nav-btn-feed" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition text-emerald-400 bg-emerald-950/40 border border-emerald-900/40 cursor-pointer">
+                            <i class="fa-solid fa-compass w-5 text-center"></i> 广场动态流
+                        </button>
+                        <button onclick="switchTab('profile')" id="nav-btn-profile" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-slate-800/60 hover:text-white cursor-pointer">
+                            <i class="fa-solid fa-user w-5 text-center"></i> 我的个人主页
+                        </button>
+                        <button onclick="switchTab('friends')" id="nav-btn-friends" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-slate-800/60 hover:text-white cursor-pointer relative">
+                            <i class="fa-solid fa-user-group w-5 text-center"></i> 好友与通知
+                            <span id="friend-badge" class="hidden absolute right-3 w-2.5 h-2.5 bg-rose-500 rounded-full"></span>
+                        </button>
+                        <button onclick="switchTab('settings')" id="nav-btn-settings" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-slate-800/60 hover:text-white cursor-pointer">
+                            <i class="fa-solid fa-gear w-5 text-center"></i> 隐私与账号设置
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Bottom Actions -->
+                <div class="pt-4 border-t border-slate-800 space-y-2">
+                    <button onclick="openPublishModal()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium py-3 rounded-xl shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 transition cursor-pointer text-sm">
+                        <i class="fa-solid fa-plus"></i> 发布新动态
+                    </button>
+                    <div class="flex gap-2">
+                        <button onclick="handleLogout()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-2 rounded-xl text-xs transition cursor-pointer">
+                            退出登录
+                        </button>
+                        <button onclick="openDeleteAccountModal()" class="flex-1 bg-rose-950/50 hover:bg-rose-900/60 border border-rose-900/50 text-rose-300 py-2 rounded-xl text-xs transition cursor-pointer">
+                            注销账号
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- CENTER MAIN CONTENT AREA -->
+            <main class="flex-1 bg-[#0b1120] overflow-y-auto max-h-screen">
+                <!-- Top Sticky Header with Search -->
+                <header class="sticky top-0 z-35 bg-[#0b1120]/90 backdrop-blur-md border-b border-slate-800 px-6 py-4 flex items-center justify-between gap-4">
+                    <h3 id="main-panel-title" class="text-lg font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-globe text-emerald-500"></i> 好友朋友圈广场
+                    </h3>
+                    <div class="flex items-center gap-3 flex-1 max-w-md justify-end">
+                        <div class="relative w-full max-w-xs">
+                            <input type="text" id="global-search-input" onkeydown="if(event.key==='Enter') executeSearch()" placeholder="搜索手机号查找用户..." class="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-9 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-xs text-slate-400"></i>
+                        </div>
+                        <button onclick="executeSearch()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-sm transition cursor-pointer">
+                            搜索
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Dynamic Content Container -->
+                <div id="dynamic-content" class="p-6"></div>
+            </main>
+
+            <!-- RIGHT SIDEBAR: Widgets -->
+            <aside class="hidden xl:flex w-[300px] bg-slate-900/90 border-l border-slate-800 flex-col p-5 gap-6 shrink-0">
+                <div class="bg-slate-800/40 border border-slate-800 rounded-2xl p-4">
+                    <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+                        <i class="fa-solid fa-shield-halved text-emerald-500"></i> 隐私保护状态
+                    </h4>
+                    <div class="space-y-2.5 text-xs">
+                        <div class="flex justify-between items-center text-slate-300">
+                            <span>可见时间范围：</span>
+                            <span id="widget-privacy-range" class="font-medium text-emerald-400">全部可见</span>
+                        </div>
+                        <div class="flex justify-between items-center text-slate-300">
+                            <span>黑名单过滤：</span>
+                            <span id="widget-block-count" class="font-medium text-slate-200">0 人</span>
+                        </div>
+                        <div class="flex justify-between items-center text-slate-300">
+                            <span>好友关系模式：</span>
+                            <span class="font-medium text-emerald-400">双向确认制</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/40 border border-slate-800 rounded-2xl p-4">
+                    <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+                        <i class="fa-solid fa-database text-emerald-500"></i> 云端连接通道
+                    </h4>
+                    <p class="text-xs text-slate-400 leading-relaxed">
+                        当前已通过 Firebase 建立实时同步管道，发布内容与好友申请秒级多端互通。
+                    </p>
+                    <button onclick="openConfigModal()" class="mt-3 w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-xl border border-slate-700 transition cursor-pointer">
+                        重新配置 Firebase
+                    </button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <div id="publish-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-emerald-500"></i> 发布新动态
+            </h3>
+            <textarea id="pub-content" rows="4" placeholder="分享这一刻的想法..." class="w-full bg-slate-800/70 border border-slate-700 rounded-xl p-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none transition mb-4"></textarea>
+            <div id="pub-media-preview" class="grid grid-cols-3 gap-2 mb-4 hidden"></div>
+            <div class="flex items-center justify-between pt-3 border-t border-slate-800">
+                <div class="flex gap-2">
+                    <label class="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 transition">
+                        <i class="fa-solid fa-image text-emerald-400"></i> 添加图片
+                        <input type="file" id="pub-img-input" accept="image/*" multiple onchange="handleMediaSelect(event, 'image')" class="hidden">
+                    </label>
+                    <label class="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 transition">
+                        <i class="fa-solid fa-video text-teal-400"></i> 添加视频
+                        <input type="file" id="pub-video-input" accept="video/*" onchange="handleMediaSelect(event, 'video')" class="hidden">
+                    </label>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="closePublishModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl transition cursor-pointer">取消</button>
+                    <button onclick="submitPublish()" id="pub-submit-btn" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs rounded-xl shadow transition cursor-pointer">发布</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="config-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+            <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-gear text-emerald-500"></i> 云端部署与自定义 Firebase 配置
+            </h3>
+            <textarea id="config-json-input" rows="7" class="w-full bg-slate-950 font-mono text-xs text-emerald-300 border border-slate-700 rounded-xl p-3 focus:outline-none focus:border-emerald-500 resize-none mb-4"></textarea>
+            <div class="flex justify-between items-center">
+                <button onclick="resetDefaultConfig()" class="text-xs text-slate-400 hover:text-white underline cursor-pointer">恢复默认环境</button>
+                <div class="flex gap-2">
+                    <button onclick="closeConfigModal()" class="px-4 py-2 bg-slate-800 text-slate-300 text-xs rounded-xl cursor-pointer">关闭</button>
+                    <button onclick="saveCustomConfig()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs rounded-xl cursor-pointer">保存并重新连接</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="delete-account-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-rose-900/50 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 class="text-lg font-bold text-rose-400 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-triangle-exclamation"></i> 永久注销并删除账号
+            </h3>
+            <input type="text" id="del-confirm-phone" placeholder="请输入当前账号的11位手机号" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 mb-4">
+            <div class="flex justify-end gap-2">
+                <button onclick="closeDeleteAccountModal()" class="px-4 py-2 bg-slate-800 text-slate-300 text-xs rounded-xl cursor-pointer">取消</button>
+                <button onclick="confirmDeleteAccount()" class="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs rounded-xl cursor-pointer">确认注销</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 你的专属 Firebase 配置
+        const DEFAULT_CONFIG = {
+            apiKey: "AIzaSyBXu3jogZFHV1pEoRtDKht2jufsALcHrfk",
+            authDomain: "zxcv-1f16e.firebaseapp.com",
+            projectId: "zxcv-1f16e",
+            storageBucket: "zxcv-1f16e.firebasestorage.app",
+            messagingSenderId: "813014614888",
+            appId: "1:813014614888:web:80e34a873ed15465d00cdd",
+            measurementId: "G-BGN41WJE09"
+        };
+
+        let db, auth, storage, analytics;
+        let currentUser = null;
+        let currentAuthUser = null;
+        let selectedFiles = [];
+        let unlistenFeed = null;
+
+        window.addEventListener('firebase-loaded', initFirebaseSystem);
+
+        function getConfig() {
+            const saved = localStorage.getItem('moment_custom_firebase_config');
+            if (saved) {
+                try { return JSON.parse(saved); } catch(e) {}
+            }
+            return DEFAULT_CONFIG;
+        }
+
+        async function initFirebaseSystem() {
+            const cfg = getConfig();
+            document.getElementById('config-json-input').value = JSON.stringify(cfg, null, 2);
+
+            try {
+                const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, getStorage, getAnalytics } = window.firebaseModules;
+                const app = initializeApp(cfg);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                storage = getStorage(app);
+                try { analytics = getAnalytics(app); } catch(e) {}
+
+                onAuthStateChanged(auth, async (user) => {
+                    currentAuthUser = user;
+                    if (!user) await signInAnonymously(auth);
+                });
+                if (!auth.currentUser) await signInAnonymously(auth);
+
+                const savedPhone = localStorage.getItem('moment_current_phone');
+                if (savedPhone) {
+                    await loadUserProfileByPhone(savedPhone);
+                } else {
+                    showAuthView();
+                }
+            } catch (err) {
+                console.error("Firebase init error:", err);
+                document.getElementById('status-banner').className = "bg-rose-600 text-white text-xs py-1.5 px-4 text-center font-medium flex items-center justify-center gap-2";
+                document.getElementById('status-banner').innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i><span>云端连接异常：${err.message}</span><button onclick="openConfigModal()" class="underline ml-4">检查配置</button>`;
+            }
+        }
+
+        function openConfigModal() {
+            document.getElementById('config-modal').classList.remove('hidden');
+            document.getElementById('config-modal').classList.add('flex');
+        }
+        function closeConfigModal() {
+            document.getElementById('config-modal').classList.remove('flex');
+            document.getElementById('config-modal').classList.add('hidden');
+        }
+        function saveCustomConfig() {
+            try {
+                const json = JSON.parse(document.getElementById('config-json-input').value);
+                localStorage.setItem('moment_custom_firebase_config', JSON.stringify(json));
+                closeConfigModal();
+                location.reload();
+            } catch(e) {
+                alert('JSON 格式错误，请检查！');
+            }
+        }
+        function resetDefaultConfig() {
+            localStorage.removeItem('moment_custom_firebase_config');
+            document.getElementById('config-json-input').value = JSON.stringify(DEFAULT_CONFIG, null, 2);
+            alert('已恢复默认配置，页面将刷新');
+            location.reload();
+        }
+
+        let generatedSmsCode = "";
+        function handleSendSms() {
+            const phone = document.getElementById('login-phone').value.trim();
+            if (!phone || phone.length !== 11) { alert('请输入有效的 11 位手机号码'); return; }
+            generatedSmsCode = Math.floor(100000 + Math.random() * 900000).toString();
+            const tip = document.getElementById('sms-tip');
+            tip.classList.remove('hidden');
+            tip.innerHTML = `<i class="fa-solid fa-circle-info"></i> 云端模拟验证码：<strong class="text-white text-sm">${generatedSmsCode}</strong> (可直接填入登录)`;
+        }
+
+        async function handleLogin() {
+            const phone = document.getElementById('login-phone').value.trim();
+            const code = document.getElementById('login-code').value.trim();
+            const nicknameInput = document.getElementById('login-nickname').value.trim();
+
+            if (!phone || phone.length !== 11) { alert('请输入正确的11位手机号'); return; }
+            if (!code || code !== generatedSmsCode) { alert('验证码错误或已失效，请重新获取'); return; }
+
+            const { doc, getDoc, setDoc } = window.firebaseModules;
+            const userRef = doc(db, 'users', phone);
+            const userSnap = await getDoc(userRef);
+
+            if (userSnap.exists()) {
+                currentUser = userSnap.data();
+            } else {
+                const nickname = nicknameInput || `用户_${phone.slice(-4)}`;
+                currentUser = {
+                    phone: phone,
+                    nickname: nickname,
+                    avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${phone}`,
+                    cover: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80",
+                    visibleDays: 0,
+                    blockedUsers: [],
+                    createdAt: Date.now()
+                };
+                await setDoc(userRef, currentUser);
+            }
+            localStorage.setItem('moment_current_phone', phone);
+            showMainView();
+        }
+
+        async function loadUserProfileByPhone(phone) {
+            const { doc, getDoc } = window.firebaseModules;
+            const snap = await getDoc(doc(db, 'users', phone));
+            if (snap.exists()) {
+                currentUser = snap.data();
+                showMainView();
+            } else {
+                localStorage.removeItem('moment_current_phone');
+                showAuthView();
+            }
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('moment_current_phone');
+            currentUser = null;
+            showAuthView();
+        }
+
+        function showAuthView() {
+            document.getElementById('view-auth').classList.remove('hidden');
+            document.getElementById('view-auth').classList.add('flex');
+            document.getElementById('view-main').classList.remove('flex');
+            document.getElementById('view-main').classList.add('hidden');
+        }
+
+        function showMainView() {
+            document.getElementById('view-auth').classList.remove('flex');
+            document.getElementById('view-auth').classList.add('hidden');
+            document.getElementById('view-main').classList.remove('hidden');
+            document.getElementById('view-main').classList.add('flex');
+
+            document.getElementById('my-sidebar-name').innerText = currentUser.nickname;
+            document.getElementById('my-sidebar-phone').innerText = currentUser.phone;
+            document.getElementById('my-sidebar-avatar').innerHTML = `<img src="${currentUser.avatar}" class="w-full h-full object-cover rounded-xl">`;
+
+            document.getElementById('widget-privacy-range').innerText = currentUser.visibleDays === 30 ? "最近一个月" : "全部可见";
+            document.getElementById('widget-block-count').innerText = `${(currentUser.blockedUsers || []).length} 人`;
+
+            switchTab('feed');
+            checkPendingFriendsBadge();
+        }
+
+        let currentTab = 'feed';
+        function switchTab(tab) {
+            currentTab = tab;
+            ['feed', 'profile', 'friends', 'settings'].forEach(t => {
+                const btn = document.getElementById(`nav-btn-${t}`);
+                if (t === tab) {
+                    btn.className = "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition text-emerald-400 bg-emerald-950/40 border border-emerald-900/40 cursor-pointer";
+                } else {
+                    btn.className = "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition text-slate-300 hover:bg-slate-800/60 hover:text-white cursor-pointer";
+                }
+            });
+
+            if (unlistenFeed) { unlistenFeed(); unlistenFeed = null; }
+
+            const container = document.getElementById('dynamic-content');
+            if (tab === 'feed') {
+                document.getElementById('main-panel-title').innerHTML = `<i class="fa-solid fa-compass text-emerald-500"></i> 好友朋友圈广场`;
+                renderFeedView(container);
+            } else if (tab === 'profile') {
+                document.getElementById('main-panel-title').innerHTML = `<i class="fa-solid fa-user text-emerald-500"></i> 我的个人主页`;
+                renderProfileView(container, currentUser.phone);
+            } else if (tab === 'friends') {
+                document.getElementById('main-panel-title').innerHTML = `<i class="fa-solid fa-user-group text-emerald-500"></i> 好友与消息通知`;
+                renderFriendsView(container);
+            } else if (tab === 'settings') {
+                document.getElementById('main-panel-title').innerHTML = `<i class="fa-solid fa-gear text-emerald-500"></i> 隐私与账号设置`;
+                renderSettingsView(container);
+            }
+        }
+
+        async function renderFeedView(container) {
+            container.innerHTML = `
+                <div class="max-w-2xl mx-auto space-y-6">
+                    <div onclick="openPublishModal()" class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex items-center gap-4 cursor-pointer hover:border-emerald-500/50 transition shadow-lg">
+                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 overflow-hidden shrink-0">
+                            <img src="${currentUser.avatar}" class="w-full h-full object-cover">
+                        </div>
+                        <div class="flex-1 bg-slate-800/60 rounded-xl px-4 py-2.5 text-sm text-slate-400">分享新鲜事、图片或视频...</div>
+                        <i class="fa-solid fa-camera text-emerald-400 text-lg px-2"></i>
+                    </div>
+                    <div id="feed-moments-list" class="space-y-6">
+                        <div class="text-center py-12 text-slate-500"><i class="fa-solid fa-spinner animate-spin text-xl mb-2"></i><p>正在同步云端动态...</p></div>
+                    </div>
+                </div>
+            `;
+
+            const { collection, query, where, getDocs, onSnapshot, orderBy, doc, getDoc } = window.firebaseModules;
+            const friendPhones = [currentUser.phone];
+            const fQuery1 = query(collection(db, 'friendships'), where('userA', '==', currentUser.phone), where('status', '==', 'accepted'));
+            const fQuery2 = query(collection(db, 'friendships'), where('userB', '==', currentUser.phone), where('status', '==', 'accepted'));
+            
+            const [snap1, snap2] = await Promise.all([getDocs(fQuery1), getDocs(fQuery2)]);
+            snap1.forEach(d => friendPhones.push(d.data().userB));
+            snap2.forEach(d => friendPhones.push(d.data().userA));
+
+            const momentsRef = collection(db, 'moments');
+            const qMoments = query(momentsRef, orderBy('createdAt', 'desc'));
+
+            unlistenFeed = onSnapshot(qMoments, async (snapshot) => {
+                const listEl = document.getElementById('feed-moments-list');
+                if (!listEl) return;
+
+                const moments = [];
+                for (const d of snapshot.docs) {
+                    const m = { id: d.id, ...d.data() };
+                    if (!friendPhones.includes(m.authorPhone)) continue;
+                    const authorDoc = await getDoc(doc(db, 'users', m.authorPhone));
+                    if (authorDoc.exists()) {
+                        const authorData = authorDoc.data();
+                        if ((authorData.blockedUsers || []).includes(currentUser.phone)) continue;
+                    }
+                    if ((m.hiddenUsers || []).includes(currentUser.phone)) continue;
+                    if (authorDoc.exists() && authorDoc.data().visibleDays === 30) {
+                        if (m.createdAt < Date.now() - 30 * 24 * 60 * 60 * 1000) continue;
+                    }
+                    moments.push(m);
+                }
+
+                if (moments.length === 0) {
+                    listEl.innerHTML = `<div class="text-center py-16 bg-slate-900/40 border border-slate-800 rounded-2xl text-slate-500"><i class="fa-solid fa-mug-hot text-3xl mb-3 text-slate-600"></i><p>暂无动态或好友尚未发布内容，快去添加好友吧！</p></div>`;
+                    return;
+                }
+                renderMomentsListHTML(listEl, moments);
+            });
+        }
+
+        function renderMomentsListHTML(containerEl, moments) {
+            containerEl.innerHTML = moments.map(m => {
+                const dateStr = new Date(m.createdAt).toLocaleString();
+                const isAuthor = m.authorPhone === currentUser.phone;
+
+                let mediaHtml = '';
+                if (m.media && m.media.length > 0) {
+                    if (m.mediaType === 'video') {
+                        mediaHtml = `<div class="mt-3 rounded-xl overflow-hidden bg-black max-w-md"><video src="${m.media[0]}" controls class="w-full max-h-[400px] object-contain"></video></div>`;
+                    } else {
+                        const gridClass = m.media.length === 1 ? 'grid-cols-1 max-w-sm' : m.media.length <= 4 ? 'grid-cols-2 max-w-md' : 'grid-cols-3';
+                        mediaHtml = `<div class="mt-3 grid ${gridClass} gap-2">` + m.media.map(url => `
+                            <div class="aspect-square bg-slate-800 rounded-xl overflow-hidden cursor-pointer" onclick="openImageViewer('${url}')">
+                                <img src="${url}" class="w-full h-full object-cover hover:scale-105 transition duration-300">
+                            </div>
+                        `).join('') + `</div>`;
+                    }
+                }
+
+                const likes = m.likes || [];
+                const hasLiked = likes.includes(currentUser.phone);
+                const comments = m.comments || [];
+
+                return `
+                    <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-3 cursor-pointer" onclick="openUserProfile('${m.authorPhone}')">
+                                <div class="w-10 h-10 rounded-xl bg-slate-800 overflow-hidden"><img src="${m.authorAvatar}" class="w-full h-full object-cover"></div>
+                                <div>
+                                    <h4 class="font-semibold text-sm text-slate-100">${m.authorName}</h4>
+                                    <p class="text-xs text-slate-500">${dateStr}</p>
+                                </div>
+                            </div>
+                            ${isAuthor ? `<button onclick="deleteMoment('${m.id}')" class="text-slate-500 hover:text-rose-400 text-xs transition p-1"><i class="fa-solid fa-trash"></i></button>` : ''}
+                        </div>
+                        <p class="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">${m.content || ''}</p>
+                        ${mediaHtml}
+                        <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                            <div class="flex items-center gap-4">
+                                <button onclick="toggleLike('${m.id}')" class="flex items-center gap-1.5 hover:text-emerald-400 transition cursor-pointer ${hasLiked ? 'text-emerald-400 font-medium' : ''}">
+                                    <i class="fa-${hasLiked ? 'solid' : 'regular'} fa-heart text-sm"></i> <span>${likes.length}</span>
+                                </button>
+                                <div class="flex items-center gap-1.5"><i class="fa-regular fa-comment text-sm"></i> <span>${comments.length}</span></div>
+                            </div>
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-slate-800/40 space-y-2">
+                            ${comments.map(c => `
+                                <div class="text-xs bg-slate-800/40 p-2 rounded-xl flex items-start justify-between">
+                                    <div><strong class="text-emerald-400">${c.authorName}：</strong><span class="text-slate-300">${c.text}</span></div>
+                                    <span class="text-[10px] text-slate-500">${new Date(c.time).toLocaleTimeString()}</span>
+                                </div>
+                            `).join('')}
+                            <div class="flex gap-2 mt-2">
+                                <input type="text" id="comment-input-${m.id}" placeholder="回复评论..." class="flex-1 bg-slate-800/60 border border-slate-700/60 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                                <button onclick="submitComment('${m.id}')" class="bg-slate-800 hover:bg-slate-700 text-emerald-400 px-3 py-1.5 rounded-xl text-xs transition cursor-pointer">发送</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function renderProfileView(container, targetPhone) {
+            const { doc, getDoc, collection, query, where, getDocs, orderBy } = window.firebaseModules;
+            const userDoc = await getDoc(doc(db, 'users', targetPhone));
+            if (!userDoc.exists()) { container.innerHTML = `<div class="text-center py-16 text-slate-500">用户不存在</div>`; return; }
+            const uData = userDoc.data();
+            const isMe = targetPhone === currentUser.phone;
+
+            let friendshipStatus = 'self';
+            if (!isMe) {
+                const f1 = await getDocs(query(collection(db, 'friendships'), where('userA', '==', currentUser.phone), where('userB', '==', targetPhone)));
+                const f2 = await getDocs(query(collection(db, 'friendships'), where('userA', '==', targetPhone), where('userB', '==', currentUser.phone)));
+                let fDoc = null;
+                if (!f1.empty) fDoc = f1.docs[0].data();
+                if (!f2.empty) fDoc = f2.docs[0].data();
+                if (fDoc) {
+                    if (fDoc.status === 'accepted') friendshipStatus = 'friend';
+                    else if (fDoc.requester === currentUser.phone) friendshipStatus = 'pending_sent';
+                    else friendshipStatus = 'pending_received';
+                } else { friendshipStatus = 'none'; }
+            }
+
+            container.innerHTML = `
+                <div class="max-w-2xl mx-auto space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                        <div class="h-48 bg-cover bg-center relative" style="background-image: url('${uData.cover}')">
+                            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent"></div>
+                        </div>
+                        <div class="px-6 pb-6 relative -mt-12 flex items-end justify-between">
+                            <div class="flex items-end gap-4">
+                                <div class="w-24 h-24 rounded-2xl bg-slate-800 border-4 border-slate-900 overflow-hidden shadow-lg"><img src="${uData.avatar}" class="w-full h-full object-cover"></div>
+                                <div class="mb-1">
+                                    <h2 class="text-xl font-bold text-white">${uData.nickname}</h2>
+                                    <p class="text-xs text-slate-400 mt-0.5">账号 / 手机号：${uData.phone}</p>
+                                </div>
+                            </div>
+                            <div>${isMe ? '' : renderFriendActionButton(targetPhone, friendshipStatus)}</div>
+                        </div>
+                    </div>
+                    <div id="profile-moments-list" class="space-y-6">
+                        <div class="text-center py-12 text-slate-500"><i class="fa-solid fa-spinner animate-spin text-xl mb-2"></i><p>加载中...</p></div>
+                    </div>
+                </div>
+            `;
+
+            const listEl = document.getElementById('profile-moments-list');
+            if (!isMe && friendshipStatus !== 'friend') {
+                listEl.innerHTML = `<div class="text-center py-16 bg-slate-900/40 border border-slate-800 rounded-2xl text-slate-500"><i class="fa-solid fa-lock text-3xl mb-3 text-slate-600"></i><p>添加好友并通过审批后方可查看对方的全部朋友圈动态</p></div>`;
+                return;
+            }
+
+            const q = query(collection(db, 'moments'), where('authorPhone', '==', targetPhone), orderBy('createdAt', 'desc'));
+            const snap = await getDocs(q);
+            const moments = [];
+            snap.forEach(d => {
+                const m = { id: d.id, ...d.data() };
+                if (uData.visibleDays === 30 && m.createdAt < Date.now() - 30 * 24 * 60 * 60 * 1000) return;
+                moments.push(m);
+            });
+
+            if (moments.length === 0) {
+                listEl.innerHTML = `<div class="text-center py-16 bg-slate-900/40 border border-slate-800 rounded-2xl text-slate-500"><p>该用户暂无可见动态</p></div>`;
+                return;
+            }
+            renderMomentsListHTML(listEl, moments);
+        }
+
+        function renderFriendActionButton(targetPhone, status) {
+            if (status === 'friend') return `<button onclick="removeFriend('${targetPhone}')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-4 py-2 rounded-xl text-xs transition cursor-pointer">已是好友</button>`;
+            if (status === 'pending_sent') return `<button disabled class="bg-slate-800 text-slate-500 px-4 py-2 rounded-xl text-xs cursor-not-allowed">已发送申请</button>`;
+            if (status === 'pending_received') return `<button onclick="switchTab('friends')" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs cursor-pointer">处理好友申请</button>`;
+            return `<button onclick="sendFriendRequest('${targetPhone}')" class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-5 py-2 rounded-xl text-xs font-medium shadow transition cursor-pointer"><i class="fa-solid fa-user-plus mr-1"></i> 加为好友</button>`;
+        }
+
+        async function sendFriendRequest(targetPhone) {
+            const { collection, addDoc } = window.firebaseModules;
+            await addDoc(collection(db, 'friendships'), { userA: currentUser.phone, userB: targetPhone, requester: currentUser.phone, status: 'pending', createdAt: Date.now() });
+            alert('好友申请已发送！');
+            switchTab('profile');
+        }
+
+        async function removeFriend(targetPhone) {
+            if (!confirm('确定要解除好友关系吗？')) return;
+            const { collection, query, where, getDocs, deleteDoc } = window.firebaseModules;
+            const f1 = await getDocs(query(collection(db, 'friendships'), where('userA', '==', currentUser.phone), where('userB', '==', targetPhone)));
+            const f2 = await getDocs(query(collection(db, 'friendships'), where('userA', '==', targetPhone), where('userB', '==', currentUser.phone)));
+            for (const d of [...f1.docs, ...f2.docs]) await deleteDoc(d.ref);
+            alert('已解除好友关系');
+            switchTab('profile');
+        }
+
+        function openUserProfile(phone) {
+            if (phone === currentUser.phone) switchTab('profile');
+            else renderProfileView(document.getElementById('dynamic-content'), phone);
+        }
+
+        async function renderFriendsView(container) {
+            container.innerHTML = `
+                <div class="max-w-2xl mx-auto space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                        <h3 class="font-bold text-base text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-user-clock text-emerald-500"></i> 好友申请审批通知</h3>
+                        <div id="pending-requests-list" class="space-y-3"><p class="text-xs text-slate-500">加载中...</p></div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+                        <h3 class="font-bold text-base text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-address-book text-emerald-500"></i> 我的好友列表</h3>
+                        <div id="accepted-friends-list" class="space-y-3"><p class="text-xs text-slate-500">加载中...</p></div>
+                    </div>
+                </div>
+            `;
+            const { collection, query, where, getDocs, doc, getDoc } = window.firebaseModules;
+            const pendingQuery = query(collection(db, 'friendships'), where('userB', '==', currentUser.phone), where('status', '==', 'pending'));
+            const pendingSnap = await getDocs(pendingQuery);
+            const pendingEl = document.getElementById('pending-requests-list');
+            
+            if (pendingSnap.empty) {
+                pendingEl.innerHTML = `<p class="text-xs text-slate-500">暂无待处理的好友申请</p>`;
+            } else {
+                let html = '';
+                for (const d of pendingSnap.docs) {
+                    const req = { id: d.id, ...d.data() };
+                    const senderDoc = await getDoc(doc(db, 'users', req.requester));
+                    if (!senderDoc.exists()) continue;
+                    const sData = senderDoc.data();
+                    html += `
+                        <div class="bg-slate-800/60 border border-slate-700/60 p-3.5 rounded-xl flex items-center justify-between">
+                            <div class="flex items-center gap-3 cursor-pointer" onclick="openUserProfile('${sData.phone}')">
+                                <div class="w-10 h-10 rounded-xl bg-slate-700 overflow-hidden"><img src="${sData.avatar}" class="w-full h-full object-cover"></div>
+                                <div><h4 class="font-semibold text-sm text-white">${sData.nickname}</h4><p class="text-xs text-slate-400">手机号：${sData.phone}</p></div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="acceptFriendRequest('${req.id}')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-xl text-xs transition cursor-pointer">同意</button>
+                                <button onclick="rejectFriendRequest('${req.id}')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-1.5 rounded-xl text-xs transition cursor-pointer">拒绝</button>
+                            </div>
+                        </div>
+                    `;
+                }
+                pendingEl.innerHTML = html;
+            }
+
+            const f1 = await getDocs(query(collection(db, 'friendships'), where('userA', '==', currentUser.phone), where('status', '==', 'accepted')));
+            const f2 = await getDocs(query(collection(db, 'friendships'), where('userB', '==', currentUser.phone), where('status', '==', 'accepted')));
+            const friendPhones = [];
+            f1.forEach(d => friendPhones.push(d.data().userB));
+            f2.forEach(d => friendPhones.push(d.data().userA));
+
+            const friendListEl = document.getElementById('accepted-friends-list');
+            if (friendPhones.length === 0) {
+                friendListEl.innerHTML = `<p class="text-xs text-slate-500">暂无好友，快去通过搜索添加吧</p>`;
+            } else {
+                let html = '';
+                for (const fPhone of friendPhones) {
+                    const fDoc = await getDoc(doc(db, 'users', fPhone));
+                    if (!fDoc.exists()) continue;
+                    const fData = fDoc.data();
+                    html += `
+                        <div class="bg-slate-800/60 border border-slate-700/60 p-3.5 rounded-xl flex items-center justify-between">
+                            <div class="flex items-center gap-3 cursor-pointer" onclick="openUserProfile('${fData.phone}')">
+                                <div class="w-10 h-10 rounded-xl bg-slate-700 overflow-hidden"><img src="${fData.avatar}" class="w-full h-full object-cover"></div>
+                                <div><h4 class="font-semibold text-sm text-white">${fData.nickname}</h4><p class="text-xs text-slate-400">手机号：${fData.phone}</p></div>
+                            </div>
+                            <button onclick="removeFriend('${fData.phone}')" class="text-xs text-rose-400 hover:underline cursor-pointer">解除好友</button>
+                        </div>
+                    `;
+                }
+                friendListEl.innerHTML = html;
+            }
+        }
+
+        async function acceptFriendRequest(reqId) {
+            await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'friendships', reqId), { status: 'accepted' });
+            switchTab('friends');
+        }
+        async function rejectFriendRequest(reqId) {
+            await window.firebaseModules.deleteDoc(window.firebaseModules.doc(db, 'friendships', reqId));
+            switchTab('friends');
+        }
+        async function checkPendingFriendsBadge() {
+            const { collection, query, where, getDocs } = window.firebaseModules;
+            const q = query(collection(db, 'friendships'), where('userB', '==', currentUser.phone), where('status', '==', 'pending'));
+            const snap = await getDocs(q);
+            const badge = document.getElementById('friend-badge');
+            if (!snap.empty) badge.classList.remove('hidden');
+            else badge.classList.add('hidden');
+        }
+
+        function renderSettingsView(container) {
+            container.innerHTML = `
+                <div class="max-w-2xl mx-auto space-y-6">
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+                        <h3 class="font-bold text-base text-white flex items-center gap-2"><i class="fa-solid fa-shield-halved text-emerald-500"></i> 朋友圈隐私设置</h3>
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">可见动态时间范围</label>
+                            <select id="setting-visible-days" onchange="updatePrivacySettings()" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500">
+                                <option value="0" ${currentUser.visibleDays === 0 ? 'selected' : ''}>全部可见</option>
+                                <option value="30" ${currentUser.visibleDays === 30 ? 'selected' : ''}>只能看最近一个月</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">全局黑名单 (不让谁看我的朋友圈 - 输入对方手机号)</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="setting-block-phone" placeholder="输入手机号" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500">
+                                <button onclick="addGlobalBlockUser()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-emerald-400 px-4 py-2 rounded-xl text-xs transition cursor-pointer">添加屏蔽</button>
+                            </div>
+                            <div id="blocked-users-list" class="mt-3 flex flex-wrap gap-2">
+                                ${(currentUser.blockedUsers || []).map(p => `
+                                    <span class="bg-slate-800 border border-slate-700 text-slate-300 px-3 py-1 rounded-xl text-xs flex items-center gap-2">
+                                        ${p} <i class="fa-solid fa-xmark text-rose-400 cursor-pointer" onclick="removeGlobalBlockUser('${p}')"></i>
+                                    </span>
+                                `).join('') || '<span class="text-xs text-slate-500">暂无屏蔽用户</span>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function updatePrivacySettings() {
+            const days = parseInt(document.getElementById('setting-visible-days').value);
+            currentUser.visibleDays = days;
+            await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'users', currentUser.phone), { visibleDays: days });
+            document.getElementById('widget-privacy-range').innerText = days === 30 ? "最近一个月" : "全部可见";
+            alert('隐私设置已更新！');
+        }
+
+        async function addGlobalBlockUser() {
+            const p = document.getElementById('setting-block-phone').value.trim();
+            if (!p || p.length !== 11) { alert('请输入正确的11位手机号'); return; }
+            if (p === currentUser.phone) { alert('不能屏蔽自己'); return; }
+            currentUser.blockedUsers = currentUser.blockedUsers || [];
+            if (currentUser.blockedUsers.includes(p)) return;
+            currentUser.blockedUsers.push(p);
+            await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'users', currentUser.phone), { blockedUsers: currentUser.blockedUsers });
+            document.getElementById('widget-block-count').innerText = `${currentUser.blockedUsers.length} 人`;
+            renderSettingsView(document.getElementById('dynamic-content'));
+        }
+
+        async function removeGlobalBlockUser(p) {
+            currentUser.blockedUsers = (currentUser.blockedUsers || []).filter(x => x !== p);
+            await window.firebaseModules.updateDoc(window.firebaseModules.doc(db, 'users', currentUser.phone), { blockedUsers: currentUser.blockedUsers });
+            document.getElementById('widget-block-count').innerText = `${currentUser.blockedUsers.length} 人`;
+            renderSettingsView(document.getElementById('dynamic-content'));
+        }
+
+        async function executeSearch() {
+            const phone = document.getElementById('global-search-input').value.trim();
+            if (!phone) return;
+            const snap = await window.firebaseModules.getDoc(window.firebaseModules.doc(db, 'users', phone));
+            if (!snap.exists()) { alert('未找到该手机号对应的用户'); return; }
+            openUserProfile(phone);
+        }
+
+        function openPublishModal() {
+            selectedFiles = [];
+            document.getElementById('pub-content').value = '';
+            document.getElementById('pub-media-preview').innerHTML = '';
+            document.getElementById('pub-media-preview').classList.add('hidden');
+            document.getElementById('publish-modal').classList.remove('hidden');
+            document.getElementById('publish-modal').classList.add('flex');
+        }
+        function closePublishModal() {
+            document.getElementById('publish-modal').classList.remove('flex');
+            document.getElementById('publish-modal').classList.add('hidden');
+        }
+
+        async function handleMediaSelect(event, type) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+            selectedFiles = files;
+            const preview = document.getElementById('pub-media-preview');
+            preview.classList.remove('hidden');
+            preview.innerHTML = files.map(f => `<div class="aspect-square bg-slate-800 rounded-xl overflow-hidden relative"><img src="${URL.createObjectURL(f)}" class="w-full h-full object-cover"></div>`).join('');
+        }
+
+        async function submitPublish() {
+            const content = document.getElementById('pub-content').value.trim();
+            if (!content && selectedFiles.length === 0) { alert('请输入文字或选择媒体文件'); return; }
+            const btn = document.getElementById('pub-submit-btn');
+            btn.innerText = "上传发布中...";
+            btn.disabled = true;
+
+            try {
+                const { ref, uploadBytes, getDownloadURL } = window.firebaseModules;
+                const { collection, addDoc } = window.firebaseModules;
+                let mediaUrls = [];
+                let mediaType = 'none';
+
+                if (selectedFiles.length > 0) {
+                    mediaType = selectedFiles[0].type.startsWith('video') ? 'video' : 'image';
+                    for (const file of selectedFiles) {
+                        const fileRef = ref(storage, `moments/${currentUser.phone}_${Date.now()}_${file.name}`);
+                        const snapshot = await uploadBytes(fileRef, file);
+                        const downloadUrl = await getDownloadURL(snapshot.ref);
+                        mediaUrls.push(downloadUrl);
+                    }
+                }
+
+                await addDoc(collection(db, 'moments'), {
+                    authorPhone: currentUser.phone,
+                    authorName: currentUser.nickname,
+                    authorAvatar: currentUser.avatar,
+                    content: content,
+                    media: mediaUrls,
+                    mediaType: mediaType,
+                    likes: [],
+                    comments: [],
+                    hiddenUsers: [],
+                    createdAt: Date.now()
+                });
+
+                closePublishModal();
+                switchTab('feed');
+            } catch (err) {
+                alert('发布失败：' + err.message);
+            } finally {
+                btn.innerText = "发布";
+                btn.disabled = false;
+            }
+        }
+
+        async function deleteMoment(momentId) {
+            if (!confirm('确定删除这条动态吗？')) return;
+            await window.firebaseModules.deleteDoc(window.firebaseModules.doc(db, 'moments', momentId));
+        }
+
+        async function toggleLike(momentId) {
+            const { doc, getDoc, updateDoc, arrayUnion, arrayRemove } = window.firebaseModules;
+            const mRef = doc(db, 'moments', momentId);
+            const snap = await getDoc(mRef);
+            if (!snap.exists()) return;
+            const likes = snap.data().likes || [];
+            if (likes.includes(currentUser.phone)) await updateDoc(mRef, { likes: arrayRemove(currentUser.phone) });
+            else await updateDoc(mRef, { likes: arrayUnion(currentUser.phone) });
+        }
+
+        async function submitComment(momentId) {
+            const input = document.getElementById(`comment-input-${momentId}`);
+            const text = input.value.trim();
+            if (!text) return;
+            const { doc, updateDoc, arrayUnion } = window.firebaseModules;
+            await updateDoc(doc(db, 'moments', momentId), {
+                comments: arrayUnion({ authorPhone: currentUser.phone, authorName: currentUser.nickname, text: text, time: Date.now() })
+            });
+            input.value = '';
+        }
+
+        function openDeleteAccountModal() {
+            document.getElementById('del-confirm-phone').value = '';
+            document.getElementById('delete-account-modal').classList.remove('hidden');
+            document.getElementById('delete-account-modal').classList.add('flex');
+        }
+        function closeDeleteAccountModal() {
+            document.getElementById('delete-account-modal').classList.remove('flex');
+            document.getElementById('delete-account-modal').classList.add('hidden');
+        }
+        async function confirmDeleteAccount() {
+            const phone = document.getElementById('del-confirm-phone').value.trim();
+            if (phone !== currentUser.phone) { alert('输入的手机号与当前账号不一致'); return; }
+            const { doc, deleteDoc, collection, query, where, getDocs } = window.firebaseModules;
+            await deleteDoc(doc(db, 'users', currentUser.phone));
+            const mSnap = await getDocs(query(collection(db, 'moments'), where('authorPhone', '==', currentUser.phone)));
+            for (const d of mSnap.docs) await deleteDoc(d.ref);
+            const f1 = await getDocs(query(collection(db, 'friendships'), where('userA', '==', currentUser.phone)));
+            const f2 = await getDocs(query(collection(db, 'friendships'), where('userB', '==', currentUser.phone)));
+            for (const d of [...f1.docs, ...f2.docs]) await deleteDoc(d.ref);
+            alert('账号及关联数据已永久注销');
+            closeDeleteAccountModal();
+            handleLogout();
+        }
+
+        function openImageViewer(url) { window.open(url, '_blank'); }
+    </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# 发布时排除，避免配置/说明被公开访问
+wrangler.jsonc
+.assetsignore
+README-上传说明.md
+.nojekyll
+.git/
+.gitignore
+node_modules/

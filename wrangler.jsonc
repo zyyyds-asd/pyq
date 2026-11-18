@@ -1,0 +1,11 @@
+// Cloudflare Workers 静态资源配置 —— 修复"无法检测到包含项目静态文件目录"报错
+// 只走 GitHub Pages 的话，这个文件用不上
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "zyyyds-asd",
+  "compatibility_date": "2025-05-01",
+  "assets": {
+    "directory": "./",
+    "not_found_handling": "404-page"
+  }
+}
